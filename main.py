@@ -14,7 +14,7 @@ def home():
     return {
         "status": "online",
         "servico": "API CEP Odoo AJL",
-        "versao": "2.0"
+        "versao": "3.0"
     }
 
 
@@ -45,25 +45,25 @@ def consultar_cep(dados: CEPRequest):
         }
 
     headers = {
-        "User-Agent": "API-CEP-Odoo-AJL/2.0",
+        "User-Agent": "API-CEP-Odoo-AJL/3.0",
         "Accept": "application/json"
     }
 
 
     # =========================================================
-    # 2. PRIMEIRA FONTE
-    #    BRASILAPI
+    # 2. OPENCEP
+    #    PRINCIPAL
     # =========================================================
 
-    brasilapi_url = (
-        f"https://brasilapi.com.br/cep/v1/{cep}"
+    opencep_url = (
+        f"https://opencep.com/v1/{cep}.json"
     )
 
     try:
 
         resposta = requests.get(
-            brasilapi_url,
-            timeout=15,
+            opencep_url,
+            timeout=10,
             headers=headers
         )
 
@@ -71,43 +71,41 @@ def consultar_cep(dados: CEPRequest):
 
             dados_cep = resposta.json()
 
-            return {
-                "sucesso": True,
-                "fonte": "BrasilAPI",
+            if dados_cep and not dados_cep.get("erro"):
 
-                "cep": dados_cep.get(
-                    "cep",
-                    cep
-                ),
+                return {
+                    "sucesso": True,
+                    "fonte": "OpenCEP",
 
-                "rua": dados_cep.get(
-                    "street"
-                ),
+                    "cep": dados_cep.get(
+                        "cep",
+                        cep
+                    ),
 
-                "bairro": dados_cep.get(
-                    "neighborhood"
-                ),
+                    "rua": dados_cep.get(
+                        "logradouro"
+                    ),
 
-                "cidade": dados_cep.get(
-                    "city"
-                ),
+                    "bairro": dados_cep.get(
+                        "bairro"
+                    ),
 
-                "estado": dados_cep.get(
-                    "state"
-                ),
+                    "cidade": dados_cep.get(
+                        "localidade"
+                    ),
 
-                "pais": "Brasil",
+                    "estado": dados_cep.get(
+                        "uf"
+                    ),
 
-                "ibge_cidade": (
-                    dados_cep.get("ibge", {})
-                    .get("city")
-                ),
+                    "pais": "Brasil",
 
-                "ibge_estado": (
-                    dados_cep.get("ibge", {})
-                    .get("state")
-                )
-            }
+                    "ibge_cidade": dados_cep.get(
+                        "ibge"
+                    ),
+
+                    "ibge_estado": None
+                }
 
     except requests.exceptions.RequestException:
         pass
@@ -117,8 +115,8 @@ def consultar_cep(dados: CEPRequest):
 
 
     # =========================================================
-    # 3. SEGUNDA FONTE
-    #    CEPIFY
+    # 3. CEPIFY
+    #    FALLBACK 1
     # =========================================================
 
     cepify_url = (
@@ -129,7 +127,7 @@ def consultar_cep(dados: CEPRequest):
 
         resposta = requests.get(
             cepify_url,
-            timeout=15,
+            timeout=10,
             headers=headers
         )
 
@@ -137,7 +135,7 @@ def consultar_cep(dados: CEPRequest):
 
             dados_cep = resposta.json()
 
-            if not dados_cep.get("erro"):
+            if dados_cep and not dados_cep.get("erro"):
 
                 return {
                     "sucesso": True,
@@ -181,7 +179,146 @@ def consultar_cep(dados: CEPRequest):
 
 
     # =========================================================
-    # 4. NENHUMA FONTE CONSEGUIU RESPONDER
+    # 4. VIACEP
+    #    FALLBACK 2
+    # =========================================================
+
+    viacep_url = (
+        f"https://viacep.com.br/ws/{cep}/json/"
+    )
+
+    try:
+
+        resposta = requests.get(
+            viacep_url,
+            timeout=10,
+            headers=headers
+        )
+
+        if resposta.status_code == 200:
+
+            dados_cep = resposta.json()
+
+            if dados_cep and not dados_cep.get("erro"):
+
+                return {
+                    "sucesso": True,
+                    "fonte": "ViaCEP",
+
+                    "cep": dados_cep.get(
+                        "cep",
+                        cep
+                    ),
+
+                    "rua": dados_cep.get(
+                        "logradouro"
+                    ),
+
+                    "bairro": dados_cep.get(
+                        "bairro"
+                    ),
+
+                    "cidade": dados_cep.get(
+                        "localidade"
+                    ),
+
+                    "estado": dados_cep.get(
+                        "uf"
+                    ),
+
+                    "pais": "Brasil",
+
+                    "ibge_cidade": dados_cep.get(
+                        "ibge"
+                    ),
+
+                    "ibge_estado": None
+                }
+
+    except requests.exceptions.RequestException:
+        pass
+
+    except Exception:
+        pass
+
+
+    # =========================================================
+    # 5. BRASILAPI
+    #    FALLBACK 3
+    # =========================================================
+
+    brasilapi_url = (
+        f"https://brasilapi.com.br/cep/v1/{cep}"
+    )
+
+    try:
+
+        resposta = requests.get(
+            brasilapi_url,
+            timeout=10,
+            headers=headers
+        )
+
+        if resposta.status_code == 200:
+
+            dados_cep = resposta.json()
+
+            if dados_cep and not dados_cep.get("erro"):
+
+                ibge = dados_cep.get(
+                    "ibge",
+                    {}
+                )
+
+                return {
+                    "sucesso": True,
+                    "fonte": "BrasilAPI",
+
+                    "cep": dados_cep.get(
+                        "cep",
+                        cep
+                    ),
+
+                    "rua": dados_cep.get(
+                        "street"
+                    ),
+
+                    "bairro": dados_cep.get(
+                        "neighborhood"
+                    ),
+
+                    "cidade": dados_cep.get(
+                        "city"
+                    ),
+
+                    "estado": dados_cep.get(
+                        "state"
+                    ),
+
+                    "pais": "Brasil",
+
+                    "ibge_cidade": (
+                        ibge.get("city")
+                        if isinstance(ibge, dict)
+                        else None
+                    ),
+
+                    "ibge_estado": (
+                        ibge.get("state")
+                        if isinstance(ibge, dict)
+                        else None
+                    )
+                }
+
+    except requests.exceptions.RequestException:
+        pass
+
+    except Exception:
+        pass
+
+
+    # =========================================================
+    # 6. NENHUMA FONTE RESPONDEU
     # =========================================================
 
     return {
@@ -189,7 +326,9 @@ def consultar_cep(dados: CEPRequest):
         "erro": "Nao foi possivel consultar o CEP nas fontes disponiveis.",
         "cep": cep,
         "fontes_consultadas": [
-            "BrasilAPI",
-            "Cepify"
+            "OpenCEP",
+            "Cepify",
+            "ViaCEP",
+            "BrasilAPI"
         ]
     }
