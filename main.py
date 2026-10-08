@@ -14,7 +14,7 @@ def home():
     return {
         "status": "online",
         "servico": "API CEP Odoo AJL",
-        "versao": "1.1"
+        "versao": "2.0"
     }
 
 
@@ -28,6 +28,10 @@ def health():
 @app.post("/cep")
 def consultar_cep(dados: CEPRequest):
 
+    # =========================================================
+    # 1. LIMPA O CEP
+    # =========================================================
+
     cep = ''.join(
         c for c in dados.cep
         if c.isdigit()
@@ -40,70 +44,152 @@ def consultar_cep(dados: CEPRequest):
             "cep_recebido": dados.cep
         }
 
-    url = f"https://viacep.com.br/ws/{cep}/json/"
+    headers = {
+        "User-Agent": "API-CEP-Odoo-AJL/2.0",
+        "Accept": "application/json"
+    }
+
+
+    # =========================================================
+    # 2. PRIMEIRA FONTE
+    #    BRASILAPI
+    # =========================================================
+
+    brasilapi_url = (
+        f"https://brasilapi.com.br/cep/v1/{cep}"
+    )
 
     try:
+
         resposta = requests.get(
-            url,
+            brasilapi_url,
             timeout=15,
-            headers={
-                "User-Agent": "API-CEP-Odoo-AJL/1.0"
-            }
+            headers=headers
         )
 
-    except requests.exceptions.Timeout:
-        return {
-            "sucesso": False,
-            "erro": "A consulta ao servico de CEP excedeu o tempo limite.",
-            "fonte": "ViaCEP"
-        }
+        if resposta.status_code == 200:
 
-    except requests.exceptions.RequestException as erro:
-        return {
-            "sucesso": False,
-            "erro": "Nao foi possivel conectar ao servico de CEP.",
-            "detalhes": str(erro),
-            "fonte": "ViaCEP"
-        }
+            dados_cep = resposta.json()
 
-    except Exception as erro:
-        return {
-            "sucesso": False,
-            "erro": "Erro inesperado durante a consulta.",
-            "detalhes": str(erro)
-        }
+            return {
+                "sucesso": True,
+                "fonte": "BrasilAPI",
 
-    if resposta.status_code != 200:
-        return {
-            "sucesso": False,
-            "erro": "O servico de CEP retornou um erro.",
-            "status_http": resposta.status_code,
-            "fonte": "ViaCEP"
-        }
+                "cep": dados_cep.get(
+                    "cep",
+                    cep
+                ),
+
+                "rua": dados_cep.get(
+                    "street"
+                ),
+
+                "bairro": dados_cep.get(
+                    "neighborhood"
+                ),
+
+                "cidade": dados_cep.get(
+                    "city"
+                ),
+
+                "estado": dados_cep.get(
+                    "state"
+                ),
+
+                "pais": "Brasil",
+
+                "ibge_cidade": (
+                    dados_cep.get("ibge", {})
+                    .get("city")
+                ),
+
+                "ibge_estado": (
+                    dados_cep.get("ibge", {})
+                    .get("state")
+                )
+            }
+
+    except requests.exceptions.RequestException:
+        pass
+
+    except Exception:
+        pass
+
+
+    # =========================================================
+    # 3. SEGUNDA FONTE
+    #    CEPIFY
+    # =========================================================
+
+    cepify_url = (
+        f"https://cepify.com.br/ws/{cep}/json"
+    )
 
     try:
-        dados_cep = resposta.json()
 
-    except Exception as erro:
-        return {
-            "sucesso": False,
-            "erro": "O servico de CEP retornou uma resposta invalida.",
-            "detalhes": str(erro)
-        }
+        resposta = requests.get(
+            cepify_url,
+            timeout=15,
+            headers=headers
+        )
 
-    if dados_cep.get("erro"):
-        return {
-            "sucesso": False,
-            "erro": "CEP nao encontrado.",
-            "cep": cep
-        }
+        if resposta.status_code == 200:
+
+            dados_cep = resposta.json()
+
+            if not dados_cep.get("erro"):
+
+                return {
+                    "sucesso": True,
+                    "fonte": "Cepify",
+
+                    "cep": dados_cep.get(
+                        "cep",
+                        cep
+                    ),
+
+                    "rua": dados_cep.get(
+                        "logradouro"
+                    ),
+
+                    "bairro": dados_cep.get(
+                        "bairro"
+                    ),
+
+                    "cidade": dados_cep.get(
+                        "localidade"
+                    ),
+
+                    "estado": dados_cep.get(
+                        "uf"
+                    ),
+
+                    "pais": "Brasil",
+
+                    "ibge_cidade": dados_cep.get(
+                        "ibge"
+                    ),
+
+                    "ibge_estado": None
+                }
+
+    except requests.exceptions.RequestException:
+        pass
+
+    except Exception:
+        pass
+
+
+    # =========================================================
+    # 4. NENHUMA FONTE CONSEGUIU RESPONDER
+    # =========================================================
 
     return {
-        "sucesso": True,
-        "cep": dados_cep.get("cep"),
-        "rua": dados_cep.get("logradouro"),
-        "bairro": dados_cep.get("bairro"),
-        "cidade": dados_cep.get("localidade"),
-        "estado": dados_cep.get("uf"),
-        "pais": "Brasil"
+        "sucesso": False,
+        "erro": "Nao foi possivel consultar o CEP nas fontes disponiveis.",
+        "cep": cep,
+        "fontes_consultadas": [
+            "BrasilAPI",
+            "Cepify"
+        ]
     }
